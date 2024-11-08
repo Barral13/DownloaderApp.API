@@ -1,0 +1,47 @@
+# Arquivos de Build
+bin/
+obj/
+
+# Configurações do Visual Studio
+.vs/
+.vscode/
+.idea/
+
+# Configurações e Segredos
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+appsettings.*.json
+
+# User Secrets e outros segredos
+secrets.json
+
+# Logs
+logs/
+*.log
+
+# Arquivos temporários, caches e lock files
+*.rsuser
+*.lock.json
+*.sln.cache
+*.cache/
+*.pdb
+
+# Arquivos de debug
+*.pdb
+*.mdb
+
+# Publish Outputs
+publish/
+out/
+
+# Dependências de NPM ou Yarn (caso use Node.js para gerenciamento de pacotes frontend)
+node_modules/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos de Sourcelink
+*.sourcelink.json

@@ -1,0 +1,6 @@
+@DownloaderApp.API_HostAddress = http://localhost:5223
+
+GET {{DownloaderApp.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
