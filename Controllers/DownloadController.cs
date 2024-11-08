@@ -17,6 +17,12 @@ namespace DownloaderApp.API.Controllers
             _logger = logger;
         }
 
+        [HttpGet("statusApi")]
+        public IActionResult Ping()
+        {
+            return Ok("API está funcionando normalmente!");
+        }
+
         [HttpGet("video")]
         public async Task<IActionResult> DownloadVideo([FromQuery] string url)
         {
