@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using YoutubeExplode;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
@@ -9,15 +8,13 @@ namespace DownloaderApp.API.Services;
 public class DownloaderService
 {
     private readonly YoutubeClient _youtubeClient;
-    private readonly string _ffmpegPath;
 
     public DownloaderService(YoutubeClient youtubeClient)
     {
-        _youtubeClient = youtubeClient;
-        _ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg", "ben", "ffmpeg.exe");
+        _youtubeClient = youtubeClient ?? throw new ArgumentNullException(nameof(youtubeClient));
     }
 
-    public async Task<string> DownloadVideoAsync(string url)
+    public async Task<(Stream stream, string title)> DownloadVideoAsync(string url)
     {
         var (videoId, video) = await GetVideoInfoAsync(url);
         var streamManifest = await _youtubeClient.Videos.Streams.GetManifestAsync(videoId);
@@ -27,42 +24,26 @@ public class DownloaderService
         var audioStream = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate()
                            ?? throw new InvalidOperationException("Não há streams de áudio disponíveis.");
 
-        var sanitizedTitle = SanitizeFileName(video.Title);
-        var downloadsPath = GetDownloadsPath();
-        var videoFilePath = GetUniqueFileName(Path.Combine(downloadsPath, $"{sanitizedTitle}_video.mp4"));
-        var audioFilePath = GetUniqueFileName(Path.Combine(downloadsPath, $"{sanitizedTitle}_audio.mp3"));
+        var videoStreamData = await _youtubeClient.Videos.Streams.GetAsync(videoStream);
+        var audioStreamData = await _youtubeClient.Videos.Streams.GetAsync(audioStream);
 
-        await Task.WhenAll(
-            _youtubeClient.Videos.Streams.DownloadAsync(videoStream, videoFilePath).AsTask(),
-            _youtubeClient.Videos.Streams.DownloadAsync(audioStream, audioFilePath).AsTask()
-        );
-
-        var outputFilePath = GetUniqueFileName(Path.Combine(downloadsPath, $"{sanitizedTitle}.mp4"));
-        await CombineVideoAndAudioAsync(videoFilePath, audioFilePath, outputFilePath);
-
-        CleanupFiles(videoFilePath, audioFilePath);
-
-        return outputFilePath;
+        var combinedStream = new CombinedStream(videoStreamData, audioStreamData);
+        return (combinedStream, $"{video.Title}.mp4");
     }
-
-    public async Task<string> DownloadAudioAsync(string url)
+    public async Task<(Stream stream, string title)> DownloadAudioAsync(string url)
     {
         var (videoId, video) = await GetVideoInfoAsync(url);
         var audioStream = (await _youtubeClient.Videos.Streams.GetManifestAsync(videoId))
                             .GetAudioOnlyStreams().GetWithHighestBitrate()
                             ?? throw new InvalidOperationException("Não há streams de áudio disponíveis.");
 
-        var sanitizedTitle = SanitizeFileName(video.Title);
-        var downloadsPath = GetDownloadsPath();
-        var audioFilePath = GetUniqueFileName(Path.Combine(downloadsPath, $"{sanitizedTitle}.mp3"));
-
-        await _youtubeClient.Videos.Streams.DownloadAsync(audioStream, audioFilePath);
-        return audioFilePath;
+        var audioStreamData = await _youtubeClient.Videos.Streams.GetAsync(audioStream);
+        return (audioStreamData, $"{video.Title}.mp3");
     }
 
     private async Task<(string videoId, Video video)> GetVideoInfoAsync(string url)
     {
-        var videoId = ExtractVideoId(url) ?? throw new ArgumentException("URL do vídeo inválido.");
+        var videoId = ExtractVideoId(url) ?? throw new ArgumentException("URL do vídeo inválida.");
         var video = await _youtubeClient.Videos.GetAsync(videoId);
         return (videoId, video);
     }
@@ -73,76 +54,63 @@ public class DownloaderService
         var match = regex.Match(url);
         return match.Success ? match.Groups[1].Value : null;
     }
+}
 
-    private string GetDownloadsPath()
+public class CombinedStream : Stream
+{
+    private readonly Stream _videoStream;
+    private readonly Stream _audioStream;
+
+    public CombinedStream(Stream videoStream, Stream audioStream)
     {
-        var downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-        if (downloadsPath == null)
-        {
-            throw new InvalidOperationException("Caminho de downloads não encontrado.");
-        }
-        return downloadsPath;
+        _videoStream = videoStream ?? throw new ArgumentNullException(nameof(videoStream));
+        _audioStream = audioStream ?? throw new ArgumentNullException(nameof(audioStream));
     }
 
-    private string GetUniqueFileName(string filePath)
+    public override bool CanRead => true;
+    public override bool CanWrite => false;
+    public override bool CanSeek => false;
+
+    public override long Length => _videoStream.Length + _audioStream.Length;
+
+    public override long Position
     {
-        int counter = 1;
-        var directory = Path.GetDirectoryName(filePath);
-        if (directory == null)
+        get => _videoStream.Position + _audioStream.Position;
+        set
         {
-            throw new InvalidOperationException("O diretório do caminho do arquivo não pode ser nulo.");
-        }
-
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
-        var extension = Path.GetExtension(filePath);
-
-        while (File.Exists(filePath))
-        {
-            filePath = Path.Combine(directory, $"{fileNameWithoutExtension} ({counter}){extension}");
-            counter++;
-        }
-
-        return filePath;
-    }
-
-    private string SanitizeFileName(string name)
-    {
-        foreach (var c in Path.GetInvalidFileNameChars())
-        {
-            name = name.Replace(c, '_');
-        }
-        return name;
-    }
-
-    private async Task CombineVideoAndAudioAsync(string videoFilePath, string audioFilePath, string outputFilePath)
-    {
-        if (!File.Exists(_ffmpegPath))
-            throw new FileNotFoundException("FFmpeg não encontrado.", _ffmpegPath);
-
-        var processStartInfo = new ProcessStartInfo
-        {
-            FileName = _ffmpegPath,
-            Arguments = $"-i \"{videoFilePath}\" -i \"{audioFilePath}\" -c:v copy -c:a aac -strict experimental \"{outputFilePath}\"",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        using var process = new Process { StartInfo = processStartInfo };
-        process.Start();
-        await Task.WhenAll(process.StandardOutput.ReadToEndAsync(), process.StandardError.ReadToEndAsync());
-        process.WaitForExit();
-
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException("Erro ao combinar vídeo e áudio.");
-    }
-
-    private void CleanupFiles(params string[] filePaths)
-    {
-        foreach (var filePath in filePaths)
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
+            _videoStream.Position = value;
+            _audioStream.Position = value;
         }
     }
+    public override void Flush()
+    {
+        _videoStream.Flush();
+        _audioStream.Flush();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var bytesRead = 0;
+
+        if (_videoStream.CanRead)
+        {
+            bytesRead = _videoStream.Read(buffer, offset, count);
+        }
+
+        if (bytesRead < count && _audioStream.CanRead)
+        {
+            bytesRead += _audioStream.Read(buffer, offset + bytesRead, count - bytesRead);
+        }
+
+        return bytesRead;
+    }
+
+    public override long Seek(long offset, SeekOrigin origin)
+        => throw new NotSupportedException("Seek não é suportado.");
+
+    public override void SetLength(long value)
+        => throw new NotSupportedException("SetLength não é suportado.");
+
+    public override void Write(byte[] buffer, int offset, int count)
+        => throw new NotSupportedException("Write não é suportado.");
 }
