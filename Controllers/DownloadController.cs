@@ -2,75 +2,75 @@ using System.Text.RegularExpressions;
 using DownloaderApp.API.Services;
 using Microsoft.AspNetCore.Mvc;
 
-namespace DownloaderApp.API.Controllers;
-
-[Route("api/[controller]")]
-[ApiController]
-public class DownloadController : ControllerBase
+namespace DownloaderApp.API.Controllers
 {
-    private readonly DownloaderService _downloaderService;
-    private readonly ILogger<DownloadController> _logger;
-
-    public DownloadController(DownloaderService downloaderService, ILogger<DownloadController> logger)
+    [Route("api/[controller]")]
+    [ApiController]
+    public class DownloadController : ControllerBase
     {
-        _downloaderService = downloaderService;
-        _logger = logger;
-    }
+        private readonly DownloaderService _downloaderService;
+        private readonly ILogger<DownloadController> _logger;
 
-    [HttpGet("status")]
-    public IActionResult HealthCheck()
-    {
-        return Ok(new { Status = "API está funcionando" });
-    }
-
-    [HttpGet("video")]
-    public async Task<IActionResult> DownloadVideo([FromQuery] string url)
-    {
-        return await DownloadMediaAsync(url, true);
-    }
-
-    [HttpGet("audio")]
-    public async Task<IActionResult> DownloadAudio([FromQuery] string url)
-    {
-        return await DownloadMediaAsync(url, false);
-    }
-
-    private async Task<IActionResult> DownloadMediaAsync(string url, bool isVideo)
-    {
-        if (string.IsNullOrWhiteSpace(url) || !IsValidUrl(url))
+        public DownloadController(DownloaderService downloaderService, ILogger<DownloadController> logger)
         {
-            _logger.LogWarning("Forneça uma URL válida: {Url}", url);
-            return BadRequest("A URL fornecida é inválida. Por favor, forneça uma URL válida do YouTube.");
+            _downloaderService = downloaderService;
+            _logger = logger;
         }
 
-        try
+        [HttpGet("status")]
+        public IActionResult HealthCheck()
         {
-            var (fileStream, fileName) = isVideo
-                ? await _downloaderService.DownloadVideoAsync(url)
-                : await _downloaderService.DownloadAudioAsync(url);
+            return Ok(new { Status = "API está funcionando" });
+        }
 
-            if (fileStream == null)
+        [HttpGet("video")]
+        public async Task<IActionResult> DownloadVideo([FromQuery] string url)
+        {
+            return await DownloadMediaAsync(url, true);
+        }
+
+        [HttpGet("audio")]
+        public async Task<IActionResult> DownloadAudio([FromQuery] string url)
+        {
+            return await DownloadMediaAsync(url, false);
+        }
+
+        private async Task<IActionResult> DownloadMediaAsync(string url, bool isVideo)
+        {
+            if (string.IsNullOrWhiteSpace(url) || !IsValidUrl(url))
             {
-                _logger.LogError("Erro ao processar o arquivo.");
-                return StatusCode(500, "Erro ao processar o arquivo.");
+                _logger.LogWarning("Forneça uma URL válida: {Url}", url);
+                return BadRequest("A URL fornecida é inválida.");
             }
 
-            var contentType = isVideo ? "video/mp4" : "audio/mpeg";
+            try
+            {
+                var (fileStream, fileName) = isVideo
+                    ? await _downloaderService.DownloadVideoAsync(url)
+                    : await _downloaderService.DownloadAudioAsync(url);
 
-            _logger.LogInformation("Download iniciado: {FileName}", fileName);
+                if (fileStream == null)
+                {
+                    _logger.LogError("Erro ao processar o arquivo.");
+                    return StatusCode(500, "Erro ao processar o arquivo.");
+                }
 
-            return File(fileStream, contentType, fileName);
+                var contentType = isVideo ? "video/mp4" : "audio/mpeg";
+                _logger.LogInformation("Download iniciado: {FileName}", fileName);
+
+                return File(fileStream, contentType, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro inesperado: {Message}", ex.Message);
+                return StatusCode(500, $"Erro ao processar o pedido: {ex.Message}");
+            }
         }
-        catch (Exception ex)
+
+        private bool IsValidUrl(string url)
         {
-            _logger.LogError(ex, "Erro inesperado ao processar o pedido: {Message}", ex.Message);
-            return StatusCode(500, $"Erro ao processar o pedido: {ex.Message}");
+            var regex = new Regex(@"(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^""&?\/\n]{11})");
+            return regex.IsMatch(url);
         }
-    }
-
-    private bool IsValidUrl(string url)
-    {
-        var regex = new Regex(@"(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^""&?\/\n]{11})");
-        return regex.IsMatch(url);
     }
 }
