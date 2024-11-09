@@ -9,10 +9,10 @@ builder.Services.AddSingleton<YoutubeClient>();
 // Configuração de CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowProductionOrigin", policy =>
+    options.AddPolicy("AllowSpecificOrigins", policy =>
     {
-        // Permite apenas a origem específica da produção
-        policy.WithOrigins("https://downloaderappapi-production.up.railway.app") 
+        // Allows both the frontend in production and during local development
+        policy.WithOrigins("https://localhost:7157", "https://downloaderappapi-production.up.railway.app")
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
@@ -42,7 +42,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Adiciona o middleware CORS para produção
-app.UseCors("AllowProductionOrigin");
+app.UseCors("AllowSpecificOrigins");
 
 // Middleware para HTTPS e autorização
 app.UseHttpsRedirection();
