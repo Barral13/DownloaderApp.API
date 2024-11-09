@@ -68,7 +68,6 @@ namespace DownloaderApp.API.Services
             }
         }
 
-
         private async Task<string> CombineVideoAndAudioWithFFmpeg(Stream videoStream, Stream audioStream, string outputFilePath)
         {
             // Salvando os fluxos em arquivos temporários
@@ -82,7 +81,7 @@ namespace DownloaderApp.API.Services
                 await audioStream.CopyToAsync(audioFile);
             }
 
-            // Caminho relativo para o FFmpeg na pasta 'ffmpeg/bin/ffmpeg.exe'
+            // Caminho correto para o FFmpeg na pasta 'ffmpeg/ben/ffmpeg.exe'
             var ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg", "ben", "ffmpeg.exe");
 
             // Verifica se o FFmpeg existe no caminho
@@ -116,6 +115,7 @@ namespace DownloaderApp.API.Services
 
             return outputFilePath;
         }
+
 
         private async Task<(string videoId, Video video)> GetVideoInfoAsync(string url)
         {
